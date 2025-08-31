@@ -20,8 +20,8 @@
             <div class="mb-3">
                 <label for="file" class="form-label">File Dokumen</label>
                 <input type="file" class="form-control @error('file') is-invalid @enderror"
-                       id="file" name="file" accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx" required>
-                <div class="form-text">Format: DOC, DOCX, XLS, XLSX, PPT, PPTX (Max: 10MB)</div>
+                       id="file" name="file" accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf" required>
+                <div class="form-text">Format: DOC, DOCX, XLS, XLSX, PPT, PPTX, PDF (Max: 10MB)</div>
                 @error('file')
                     <div class="invalid-feedback">{{ $message }}</div>
                 @enderror

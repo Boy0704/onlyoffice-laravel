@@ -53,7 +53,7 @@ class DocumentController extends Controller
     {
         $request->validate([
             'title' => 'required',
-            'file' => 'required|mimes:doc,docx,xlsx,xls,pptx,ppt|max:10240'
+            'file' => 'required|mimes:doc,docx,xlsx,xls,pptx,ppt,pdf|max:10240'
         ]);
 
         if ($request->hasFile('file')) {
