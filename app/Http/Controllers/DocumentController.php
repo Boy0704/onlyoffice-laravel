@@ -298,55 +298,37 @@ class DocumentController extends Controller
     {
         $document = Document::findOrFail($id);
 
-        // Konfigurasi untuk mode preview (view-only)
+        // Simplified config untuk preview
         $config = [
             'document' => [
                 'fileType' => $document->file_type,
-                'key' => $document->document_key . '_preview_' . $document->updated_at->timestamp,
+                'key' => $document->document_key . '_' . time(), // Unique key
                 'title' => $document->title,
-                'url' => url('documents/download/' . $document->id),
-                'permissions' => [
-                    'comment' => false,     // Tidak bisa comment
-                    'download' => true,      // Bisa download
-                    'edit' => false,         // TIDAK BISA EDIT
-                    'fillForms' => false,    // Tidak bisa isi form
-                    'modifyFilter' => false, // Tidak bisa modify filter
-                    'modifyContentControl' => false,
-                    'review' => false,       // Tidak bisa review
-                    'print' => true,         // Bisa print
-                    'copy' => true           // Bisa copy text
-                ]
+                'url' => url('documents/download/' . $document->id)
             ],
             'documentType' => $this->getDocumentType($document->file_type),
             'editorConfig' => [
-                'mode' => 'view',        // MODE VIEW, BUKAN EDIT
-                'lang' => 'id',
-                'user' => [
-                    'id' => 'viewer_1',
-                    'name' => 'Viewer'
-                ],
-                'customization' => [
-                    'autosave' => false,
-                    'chat' => false,
-                    'comments' => false,
-                    'compactHeader' => false,
-                    'compactToolbar' => false,
-                    'feedback' => false,
-                    'forcesave' => false,
-                    'help' => true,
-                    'hideRightMenu' => false,
-                    'toolbarNoTabs' => false,
-                    'uiTheme' => 'theme-light'
-                ]
-            ]
+                'mode' => 'view', // View mode only
+                'lang' => 'id'
+            ],
+            'type' => 'desktop', // Set type to desktop for better rendering
+            'width' => '100%',
+            'height' => '100%'
         ];
 
         // Generate JWT token
         $token = JWT::encode($config, $this->jwtSecret, 'HS256');
 
+        // Log for debugging
+        \Log::info('Preview Config', [
+            'document_id' => $id,
+            'config' => $config,
+            'download_url' => url('documents/download/' . $document->id)
+        ]);
+
         return view('documents.preview', [
             'document' => $document,
-            'config' => json_encode($config),
+            'config' => json_encode($config, JSON_UNESCAPED_SLASHES),
             'token' => $token,
             'onlyofficeUrl' => $this->onlyofficeUrl
         ]);
