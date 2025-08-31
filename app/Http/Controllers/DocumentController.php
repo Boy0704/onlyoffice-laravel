@@ -292,4 +292,223 @@ class DocumentController extends Controller
         return redirect()->route('documents.index')
             ->with('success', 'Dokumen berhasil dihapus');
     }
+
+    // Method baru untuk preview dokumen (view-only)
+    public function preview($id)
+    {
+        $document = Document::findOrFail($id);
+
+        // Konfigurasi untuk mode preview (view-only)
+        $config = [
+            'document' => [
+                'fileType' => $document->file_type,
+                'key' => $document->document_key . '_preview_' . $document->updated_at->timestamp,
+                'title' => $document->title,
+                'url' => url('documents/download/' . $document->id),
+                'permissions' => [
+                    'comment' => false,     // Tidak bisa comment
+                    'download' => true,      // Bisa download
+                    'edit' => false,         // TIDAK BISA EDIT
+                    'fillForms' => false,    // Tidak bisa isi form
+                    'modifyFilter' => false, // Tidak bisa modify filter
+                    'modifyContentControl' => false,
+                    'review' => false,       // Tidak bisa review
+                    'print' => true,         // Bisa print
+                    'copy' => true           // Bisa copy text
+                ]
+            ],
+            'documentType' => $this->getDocumentType($document->file_type),
+            'editorConfig' => [
+                'mode' => 'view',        // MODE VIEW, BUKAN EDIT
+                'lang' => 'id',
+                'user' => [
+                    'id' => 'viewer_1',
+                    'name' => 'Viewer'
+                ],
+                'customization' => [
+                    'autosave' => false,
+                    'chat' => false,
+                    'comments' => false,
+                    'compactHeader' => false,
+                    'compactToolbar' => false,
+                    'feedback' => false,
+                    'forcesave' => false,
+                    'help' => true,
+                    'hideRightMenu' => false,
+                    'toolbarNoTabs' => false,
+                    'uiTheme' => 'theme-light'
+                ]
+            ]
+        ];
+
+        // Generate JWT token
+        $token = JWT::encode($config, $this->jwtSecret, 'HS256');
+
+        return view('documents.preview', [
+            'document' => $document,
+            'config' => json_encode($config),
+            'token' => $token,
+            'onlyofficeUrl' => $this->onlyofficeUrl
+        ]);
+    }
+
+    // Method untuk preview dengan embedded viewer (alternatif - lebih ringan)
+    public function quickPreview($id)
+    {
+        $document = Document::findOrFail($id);
+
+        // Untuk file Word, Excel, PowerPoint bisa menggunakan Office Online Viewer
+        $supportedTypes = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
+
+        if (in_array($document->file_type, $supportedTypes)) {
+            $fileUrl = url('documents/download/' . $document->id);
+            // URL encode untuk Office Online Viewer
+            $viewerUrl = 'https://view.officeapps.live.com/op/embed.aspx?src=' . urlencode($fileUrl);
+
+            return view('documents.quick-preview', [
+                'document' => $document,
+                'viewerUrl' => $viewerUrl,
+                'fileUrl' => $fileUrl
+            ]);
+        }
+
+        // Jika tidak support, redirect ke preview OnlyOffice
+        return redirect()->route('documents.preview', $document->id);
+    }
+
+    // Method untuk print dokumen
+    public function print($id)
+    {
+        $document = Document::findOrFail($id);
+
+        // Konfigurasi khusus untuk print
+        $config = [
+            'document' => [
+                'fileType' => $document->file_type,
+                'key' => $document->document_key . '_print_' . time(),
+                'title' => $document->title,
+                'url' => url('documents/download/' . $document->id),
+                'permissions' => [
+                    'download' => false,
+                    'edit' => false,
+                    'print' => true,
+                    'copy' => false
+                ]
+            ],
+            'documentType' => $this->getDocumentType($document->file_type),
+            'editorConfig' => [
+                'mode' => 'view',
+                'lang' => 'id',
+                'customization' => [
+                    'autosave' => false,
+                    'compactHeader' => true,
+                    'compactToolbar' => true,
+                    'hideRightMenu' => true,
+                    'toolbarNoTabs' => true
+                ],
+                'embedded' => [
+                    'embedUrl' => url('documents/download/' . $document->id),
+                    'fullscreenUrl' => url('documents/preview/' . $document->id),
+                    'saveUrl' => '',
+                    'shareUrl' => '',
+                    'toolbarDocked' => 'top'
+                ]
+            ],
+            'events' => [
+                'onAppReady' => 'onAppReady',
+                'onDocumentReady' => 'onDocumentReady'
+            ],
+            'type' => 'embedded'
+        ];
+
+        $token = JWT::encode($config, $this->jwtSecret, 'HS256');
+
+        return view('documents.print', [
+            'document' => $document,
+            'config' => json_encode($config),
+            'token' => $token,
+            'onlyofficeUrl' => $this->onlyofficeUrl
+        ]);
+    }
+
+    // Method untuk share dokumen (generate shareable link)
+    public function share($id)
+    {
+        $document = Document::findOrFail($id);
+
+        // Generate unique share token
+        $shareToken = base64_encode($document->id . '|' . time());
+
+        // Simpan token ke database jika perlu (optional)
+        // Atau gunakan cache untuk temporary share
+        \Cache::put('share_' . $shareToken, $document->id, now()->addDays(7));
+
+        $shareUrl = url('documents/shared/' . $shareToken);
+
+        return response()->json([
+            'success' => true,
+            'shareUrl' => $shareUrl,
+            'expiresIn' => '7 days'
+        ]);
+    }
+
+    // Method untuk akses shared document
+    public function shared($token)
+    {
+        $documentId = \Cache::get('share_' . $token);
+
+        if (!$documentId) {
+            abort(404, 'Link sharing sudah expired atau tidak valid');
+        }
+
+        $document = Document::findOrFail($documentId);
+
+        // Konfigurasi untuk shared view (read-only)
+        $config = [
+            'document' => [
+                'fileType' => $document->file_type,
+                'key' => $document->document_key . '_shared_' . md5($token),
+                'title' => $document->title,
+                'url' => url('documents/download/' . $document->id),
+                'permissions' => [
+                    'comment' => false,
+                    'download' => true,
+                    'edit' => false,
+                    'print' => true,
+                    'copy' => true
+                ]
+            ],
+            'documentType' => $this->getDocumentType($document->file_type),
+            'editorConfig' => [
+                'mode' => 'view',
+                'lang' => 'id',
+                'user' => [
+                    'id' => 'guest_' . md5($token),
+                    'name' => 'Guest Viewer'
+                ],
+                'customization' => [
+                    'logo' => [
+                        'image' => '',
+                        'imageEmbedded' => '',
+                        'url' => url('/')
+                    ],
+                    'goback' => [
+                        'text' => 'Kembali',
+                        'url' => url('/')
+                    ]
+                ]
+            ]
+        ];
+
+        $jwtToken = JWT::encode($config, $this->jwtSecret, 'HS256');
+
+        return view('documents.shared', [
+            'document' => $document,
+            'config' => json_encode($config),
+            'token' => $jwtToken,
+            'onlyofficeUrl' => $this->onlyofficeUrl
+        ]);
+    }
+
+
 }
